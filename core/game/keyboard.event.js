@@ -1,20 +1,20 @@
 class KeyboardEvent {
-  constructor(player) {
-    this.player = player;
+  constructor() {
     this.initEvent();
   }
 
   initEvent() {
+    const gameManager = GameManager.getInstance();
     document.addEventListener("keydown", (event) => {
       switch (event.key) {
         case "q":
-          this.player.moveActions.LEFT = true;
+          gameManager.player.moveActions.left = true;
           break;
         case "d":
-          this.player.moveActions.RIGHT = true;
+          gameManager.player.moveActions.right = true;
           break;
         case " ":
-          this.player.jump();
+          gameManager.player.jump();
           break;
 
         default:
@@ -25,10 +25,10 @@ class KeyboardEvent {
     document.addEventListener("keyup", (event) => {
       switch (event.key) {
         case "q":
-          this.player.moveActions.LEFT = false;
+          gameManager.player.moveActions.left = false;
           break;
         case "d":
-          this.player.moveActions.RIGHT = false;
+          gameManager.player.moveActions.right = false;
           break;
 
         default:

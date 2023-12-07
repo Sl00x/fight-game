@@ -6,27 +6,11 @@ class Player extends Entity {
   }
 
   update = () => {
-    if (
-      this.moveActions.RIGHT &&
-      (!this.collidings.right || this.collidings.right.weight < this.weight)
-    ) {
-      this.move(
-        "RIGHT",
-        (this.speed * (this.weight - (this.collidings.right?.weight ?? 0))) /
-          this.weight,
-        this.player
-      );
+    if (this.canMove("right")) {
+      this.move("right", this.speed);
     }
-    if (
-      this.moveActions.LEFT &&
-      (!this.collidings.left || this.collidings.left.weight < this.weight)
-    ) {
-      this.move(
-        "LEFT",
-        (this.speed * (this.weight - (this.collidings.left?.weight ?? 0))) /
-          this.weight,
-        this.player
-      );
+    if (this.canMove("left")) {
+      this.move("left", this.speed);
     }
     this.gravity();
   };

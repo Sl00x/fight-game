@@ -17,40 +17,40 @@ class Entity {
     this.jumpVelocity = 0;
     this.kinetic = kinetic;
     this.moveActions = {
-      RIGHT: false,
-      LEFT: false,
+      right: false,
+      left: false,
     };
     this.collidings = {
-      top: null,
-      bottom: null,
-      right: null,
-      left: null,
+      top: [],
+      bottom: [],
+      right: [],
+      left: [],
     };
     this.weight = weight;
   }
 
   checkCollidings = () => {
     this.collidings = {
-      top: null,
-      bottom: null,
-      right: null,
-      left: null,
+      top: [],
+      bottom: [],
+      right: [],
+      left: [],
     };
     for (const entity of scene.entities) {
       if (entity.name === this.name) continue;
       const collidingSide = this.isColliding(entity);
       switch (collidingSide.side) {
         case "top":
-          this.collidings.top = collidingSide.entity;
+          this.collidings.top.push(collidingSide.entity);
           break;
         case "bottom":
-          this.collidings.bottom = collidingSide.entity;
+          this.collidings.bottom.push(collidingSide.entity);
           break;
         case "right":
-          this.collidings.right = collidingSide.entity;
+          this.collidings.right.push(collidingSide.entity);
           break;
         case "left":
-          this.collidings.left = collidingSide.entity;
+          this.collidings.left.push(collidingSide.entity);
           break;
         default:
           this.isOnGround = false;
@@ -59,53 +59,63 @@ class Entity {
     }
   };
 
-  move = (direction, speed = this.speed, initialWeight = null) => {
+  getDirectionWeight = (direction, checkedCollidings) => {
+    return this.collidings[direction].reduce((prev, next) => {
+      if (checkedCollidings.includes(next.name)) return prev;
+      checkedCollidings.push(next.name);
+      return (
+        next.weight +
+        prev +
+        next.getDirectionWeight(direction, checkedCollidings) +
+        next.getDirectionWeight("top", checkedCollidings)
+      );
+    }, 0);
+  };
+
+  canMove = (direction) => {
+    const checkedCollidings = [];
+    return (
+      (!["left", "right"].includes(direction) || this.moveActions[direction]) &&
+      this.getDirectionWeight(direction, checkedCollidings) +
+        (direction !== "top"
+          ? this.getDirectionWeight("top", checkedCollidings)
+          : 0) <
+        this.weight
+    );
+  };
+
+  move = (direction, speed = this.speed, initial = true) => {
     if (!this.kinetic) return;
-    let speedMoved = speed;
+    const speedMoved = initial ? getMoveSpeed(this, speed, direction) : speed;
     switch (direction) {
-      case "LEFT":
-        if (this.collidings.left) {
-          speedMoved = this.collidings.left.move(
-            "LEFT",
-            speed *
-              (initialWeight
-                ? (initialWeight - this.collidings.left.weight) / initialWeight
-                : 1),
-            initialWeight ?? this.weight
+      case "left":
+        if (this.collidings.left.length > 0) {
+          this.collidings.left.forEach((c) =>
+            c.move("left", speedMoved, false)
           );
         }
         this.position.x -= speedMoved;
         break;
-      case "RIGHT":
-        if (this.collidings.right) {
-          speedMoved = this.collidings.right.move(
-            "RIGHT",
-            speed *
-              (initialWeight
-                ? (initialWeight - this.collidings.right.weight) / initialWeight
-                : 1),
-            initialWeight ?? this.weight
+      case "right":
+        if (this.collidings.right.length > 0) {
+          this.collidings.right.forEach((c) =>
+            c.move("right", speedMoved, false)
           );
         }
         this.position.x += speedMoved;
         break;
-      case "UP":
-        if (this.collidings.top) {
-          speedMoved = this.collidings.top.move(
-            "UP",
-            speed *
-              (initialWeight
-                ? (initialWeight - this.collidings.top.weight) / initialWeight
-                : 1),
-            initialWeight ?? this.weight
-          );
-          if (this.collidings.top.jumpVelocity < 0) {
-            this.collidings.top.jumpVelocity = 0;
-          }
+      case "top":
+        if (this.collidings.top.length > 0) {
+          this.collidings.top.forEach((c) => {
+            c.move("top", speedMoved, false);
+            if (c.jumpVelocity < 0) {
+              c.jumpVelocity = 0;
+            }
+          });
         }
         this.position.y -= speedMoved;
         break;
-      case "DOWN":
+      case "bottom":
         this.position.y += speedMoved;
         break;
       default:
@@ -113,37 +123,31 @@ class Entity {
     }
     this.checkCollidings();
     this.checkPositionReplace();
-    return speedMoved;
   };
 
   jump = () => {
-    if (
-      !this.isOnGround ||
-      (this.collidings.top && this.collidings.top.weight >= this.weight) ||
-      !this.kinetic
-    ) {
+    if (!this.checkIsNotFlying() || !this.canMove("top") || !this.kinetic) {
       return;
     }
     this.isOnGround = false;
-    this.jumpVelocity =
-      (INIT_JUMP_VELOCITY *
-        (this.weight - (this.collidings.top?.weight ?? 0))) /
-      this.weight;
+    this.jumpVelocity = getMoveSpeed(this, INIT_JUMP_VELOCITY, "top");
   };
 
   checkIsOnGround = () =>
-    this.jumpVelocity < 0 &&
+    this.jumpVelocity <= 0 &&
     this.position.y >= window.innerHeight - this.size.h - this.colliderPadding;
 
   checkIsNotFlying = () => {
-    return this.collidings.bottom
-      ? this.collidings.bottom.checkIsNotFlying()
+    return this.collidings.bottom.length > 0
+      ? this.collidings.bottom.some((c) => c.checkIsNotFlying())
       : this.checkIsOnGround();
   };
 
   checkPositionReplace = () => {
-    const collidingBottom = this.collidings.bottom;
-    const collidingTop = this.collidings.top;
+    const collidingBottom = this.collidings.bottom.at(0);
+    const collidingTop = this.collidings.top.at(0);
+    const collidingLeft = this.collidings.left.at(0);
+    const collidingRight = this.collidings.right.at(0);
 
     if (this.jumpVelocity < 0 && collidingBottom) {
       this.position.y =
@@ -171,20 +175,20 @@ class Entity {
       this.isOnGround = true;
     }
 
-    if (this.collidings.right) {
+    if (collidingRight) {
       this.position.x =
-        this.collidings.right.position.x -
+        collidingRight.position.x -
         this.size.w -
         this.colliderPadding -
-        this.collidings.right.colliderPadding;
+        collidingRight.colliderPadding;
     }
 
-    if (this.collidings.left) {
+    if (collidingLeft) {
       this.position.x =
-        this.collidings.left.position.x +
-        this.collidings.left.size.w +
+        collidingLeft.position.x +
+        collidingLeft.size.w +
         this.colliderPadding +
-        this.collidings.left.colliderPadding;
+        collidingLeft.colliderPadding;
     }
   };
 
@@ -193,21 +197,17 @@ class Entity {
     this.checkCollidings();
     if (
       !this.checkIsOnGround() &&
-      ((this.jumpVelocity > 0 &&
-        (!this.collidings.top || this.collidings.top.weight < this.weight)) ||
-        (this.jumpVelocity <= 0 && !this.collidings.bottom))
+      ((this.jumpVelocity > 0 && this.canMove("top")) ||
+        (this.jumpVelocity <= 0 && this.collidings.bottom.length === 0))
     ) {
-      if (this.jumpVelocity > 0 && this.collidings.top) {
-        this.jumpVelocity = this.collidings.top.move(
-          "UP",
-          (this.jumpVelocity * (this.weight - this.collidings.top.weight)) /
-            this.weight,
-          this.weight
-        );
-
-        if (this.collidings.top.jumpVelocity < 0) {
-          this.collidings.top.jumpVelocity = 0;
-        }
+      if (this.jumpVelocity > 0 && this.collidings.top.length > 0) {
+        this.jumpVelocity = getMoveSpeed(this, this.jumpVelocity, "top");
+        this.collidings.top.forEach((c) => {
+          c.move("top", this.jumpVelocity, false);
+          if (c.jumpVelocity < 0) {
+            c.jumpVelocity = 0;
+          }
+        });
       }
 
       this.position.y -= this.jumpVelocity;
@@ -283,8 +283,7 @@ class Entity {
   };
 
   draw = () => {
-    const scene = Scene.getInstance();
-    const g = scene.context;
+    const g = GameManager.getInstance().getCurrentContext();
     g.strokeStyle = "red";
     g.strokeRect(this.position.x, this.position.y, this.size.w, this.size.h);
     if (this.boxCollider) {

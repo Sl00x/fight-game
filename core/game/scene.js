@@ -1,7 +1,6 @@
 class Scene {
-  static instance;
-
-  constructor() {
+  constructor(name) {
+    this.name = name;
     this.canvas = document.getElementById("scene");
     this.context = this.canvas.getContext("2d");
     this.canvas.width = window.innerWidth;
@@ -9,13 +8,6 @@ class Scene {
     this.canvas.style.backgroundColor = "black";
     this.entities = [];
   }
-
-  static getInstance = () => {
-    if (!this.instance) {
-      this.instance = new Scene();
-    }
-    return this.instance;
-  };
 
   run = (callback) => {
     let lastTime;

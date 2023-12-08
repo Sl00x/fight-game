@@ -3,23 +3,26 @@ class Entity {
     name = "entity",
     position,
     weight,
-    boxCollider = false,
-    kinetic = true
+    colliderPadding = 0,
+    kinetic = false,
+    canBeCrossed = false,
+    sprite = null
   ) {
     this.health = 100;
     this.name = name;
     this.speed = 10;
-    this.size = { w: 32, h: 32 };
+    const colliderSize = { w: 32, h: 32 };
+    this.scale = 1;
+    this.size = {
+      w: colliderSize.w * this.scale,
+      h: colliderSize.h * this.scale,
+    };
     this.position = position;
-    this.boxCollider = boxCollider;
-    this.colliderPadding = 20;
+    this.showBoxCollider = false;
+    this.colliderPadding = colliderPadding;
     this.isOnGround = false;
     this.jumpVelocity = 0;
     this.kinetic = kinetic;
-    this.moveActions = {
-      right: false,
-      left: false,
-    };
     this.collidings = {
       top: [],
       bottom: [],
@@ -27,7 +30,15 @@ class Entity {
       left: [],
     };
     this.weight = weight;
+    this.canBeCrossed = canBeCrossed;
+    this.sprite = null;
+    if (sprite) {
+      this.sprite = new Image();
+      this.sprite.src = sprite;
+    }
   }
+
+  getTangibleCollidings = () => {};
 
   checkCollidings = () => {
     this.collidings = {
@@ -37,7 +48,7 @@ class Entity {
       left: [],
     };
     for (const entity of scene.entities) {
-      if (entity.name === this.name) continue;
+      if (entity.name === this.name || !entity.isVisible()) continue;
       const collidingSide = this.isColliding(entity);
       switch (collidingSide.side) {
         case "top":
@@ -59,6 +70,19 @@ class Entity {
     }
   };
 
+  getWeightFactor = (initialWeight, direction) => {
+    return this.collidings[direction].reduce((prev, next) => {
+      return (
+        ((prev * (initialWeight - next.weight)) / initialWeight) *
+        next.getWeightFactor(initialWeight, direction)
+      );
+    }, 1);
+  };
+
+  getMoveSpeed = (initialSpeed, direction) => {
+    return initialSpeed * this.getWeightFactor(this.weight, direction);
+  };
+
   getDirectionWeight = (direction, checkedCollidings) => {
     return this.collidings[direction].reduce((prev, next) => {
       if (checkedCollidings.includes(next.name)) return prev;
@@ -72,10 +96,17 @@ class Entity {
     }, 0);
   };
 
+  hasDirectionNotKinetic = (direction) => {
+    for (const c of this.collidings[direction]) {
+      if (!c.kinetic || c.hasDirectionNotKinetic(direction)) return true;
+    }
+    return false;
+  };
+
   canMove = (direction) => {
     const checkedCollidings = [];
     return (
-      (!["left", "right"].includes(direction) || this.moveActions[direction]) &&
+      !this.hasDirectionNotKinetic(direction) &&
       this.getDirectionWeight(direction, checkedCollidings) +
         (direction !== "top"
           ? this.getDirectionWeight("top", checkedCollidings)
@@ -86,7 +117,7 @@ class Entity {
 
   move = (direction, speed = this.speed, initial = true) => {
     if (!this.kinetic) return;
-    const speedMoved = initial ? getMoveSpeed(this, speed, direction) : speed;
+    const speedMoved = initial ? this.getMoveSpeed(speed, direction) : speed;
     switch (direction) {
       case "left":
         if (this.collidings.left.length > 0) {
@@ -130,17 +161,29 @@ class Entity {
       return;
     }
     this.isOnGround = false;
-    this.jumpVelocity = getMoveSpeed(this, INIT_JUMP_VELOCITY, "top");
+    this.jumpVelocity = this.getMoveSpeed(INIT_JUMP_VELOCITY, "top");
   };
 
-  checkIsOnGround = () =>
-    this.jumpVelocity <= 0 &&
-    this.position.y >= window.innerHeight - this.size.h - this.colliderPadding;
+  checkIsOnGround = () => {
+    const currentScene = GameManager.getInstance().currentScene;
+
+    return (
+      this.jumpVelocity <= 0 &&
+      this.position.y >=
+        currentScene.canvas.height -
+          currentScene.bottomPadding -
+          this.size.h -
+          this.colliderPadding
+    );
+  };
 
   checkIsNotFlying = () => {
-    return this.collidings.bottom.length > 0
-      ? this.collidings.bottom.some((c) => c.checkIsNotFlying())
-      : this.checkIsOnGround();
+    return (
+      !this.kinetic ||
+      (this.collidings.bottom.length > 0
+        ? this.collidings.bottom.some((c) => c.checkIsNotFlying())
+        : this.checkIsOnGround())
+    );
   };
 
   checkPositionReplace = () => {
@@ -170,14 +213,22 @@ class Entity {
     }
 
     if (this.checkIsOnGround()) {
-      this.position.y = window.innerHeight - this.size.h - this.colliderPadding;
+      const currentScene = GameManager.getInstance().currentScene;
+      this.position.y =
+        currentScene.canvas.height -
+        currentScene.bottomPadding -
+        this.size.h -
+        this.colliderPadding;
       this.jumpVelocity = 0;
       this.isOnGround = true;
     }
 
+    const currentScene = GameManager.getInstance().currentScene;
+
     if (collidingRight) {
       this.position.x =
         collidingRight.position.x -
+        currentScene.backgroundOffset * (!(this instanceof Player) ? -1 : 1) -
         this.size.w -
         this.colliderPadding -
         collidingRight.colliderPadding;
@@ -185,7 +236,8 @@ class Entity {
 
     if (collidingLeft) {
       this.position.x =
-        collidingLeft.position.x +
+        collidingLeft.position.x -
+        currentScene.backgroundOffset * (!(this instanceof Player) ? -1 : 1) +
         collidingLeft.size.w +
         this.colliderPadding +
         collidingLeft.colliderPadding;
@@ -201,7 +253,7 @@ class Entity {
         (this.jumpVelocity <= 0 && this.collidings.bottom.length === 0))
     ) {
       if (this.jumpVelocity > 0 && this.collidings.top.length > 0) {
-        this.jumpVelocity = getMoveSpeed(this, this.jumpVelocity, "top");
+        this.jumpVelocity = this.getMoveSpeed(this.jumpVelocity, "top");
         this.collidings.top.forEach((c) => {
           c.move("top", this.jumpVelocity, false);
           if (c.jumpVelocity < 0) {
@@ -218,15 +270,25 @@ class Entity {
   };
 
   isColliding = (entity2) => {
+    const currentScene = GameManager.getInstance().currentScene;
+
     const rect1 = {
-      x: this.position.x - this.colliderPadding - 1,
+      x:
+        this.position.x -
+        (!(this instanceof Player) ? currentScene.backgroundOffset : 0) -
+        this.colliderPadding -
+        1,
       y: this.position.y - this.colliderPadding - 1,
       width: this.size.w + this.colliderPadding * 2 + 1,
       height: this.size.h + this.colliderPadding * 2 + 1,
     };
 
     const rect2 = {
-      x: entity2.position.x - entity2.colliderPadding - 1,
+      x:
+        entity2.position.x -
+        (!(entity2 instanceof Player) ? currentScene.backgroundOffset : 0) -
+        entity2.colliderPadding -
+        1,
       y: entity2.position.y - entity2.colliderPadding - 1,
       width: entity2.size.w + entity2.colliderPadding * 2 + 1,
       height: entity2.size.h + entity2.colliderPadding * 2 + 1,
@@ -278,23 +340,45 @@ class Entity {
     return { side: null, entity: null };
   };
 
-  update = () => {
+  isVisible() {
+    return true;
+  }
+
+  update() {
     this.gravity();
-  };
+  }
 
   draw = () => {
-    const g = GameManager.getInstance().getCurrentContext();
-    g.strokeStyle = "red";
-    g.strokeRect(this.position.x, this.position.y, this.size.w, this.size.h);
-    if (this.boxCollider) {
-      g.strokeStyle = "lime";
-      g.lineWidth = 1;
-      g.strokeRect(
-        this.position.x - this.colliderPadding,
-        this.position.y - this.colliderPadding,
-        this.size.w + this.colliderPadding * 2,
-        this.size.h + this.colliderPadding * 2
+    const currentScene = GameManager.getInstance().currentScene;
+    const g = currentScene.context;
+
+    if (!this.sprite) {
+      g.fillStyle = "red";
+      g.fillRect(
+        this.position.x - currentScene.backgroundOffset,
+        this.position.y,
+        this.size.w,
+        this.size.h
       );
+      // if (this.showBoxCollider) {
+      //   g.strokeStyle = "lime";
+      //   g.lineWidth = 1;
+      //   g.strokeRect(
+      //     this.position.x - currentScene.backgroundOffset - this.colliderPadding,
+      //     this.position.y - this.colliderPadding,
+      //     this.size.w + this.colliderPadding * 2,
+      //     this.size.h + this.colliderPadding * 2
+      //   );
+      // }
+      return;
     }
+
+    g.drawImage(
+      this.sprite,
+      this.position.x - currentScene.backgroundOffset,
+      this.position.y,
+      this.size.w,
+      this.size.h
+    );
   };
 }

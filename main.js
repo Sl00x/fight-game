@@ -1,19 +1,37 @@
 const gameManager = GameManager.getInstance();
 
-const player = new Player({ x: 100, y: 400 }, true);
-const scene = new Scene("scene 1");
+const playerEntity = new Player({ x: 500, y: 400 });
+const scene = new Scene("scene 1", "assets/maps/City2.png", 100);
 
-gameManager.setPlayer(player);
+gameManager.setPlayer(playerEntity);
 gameManager.addScene(scene);
 gameManager.setCurrentScene(scene.name);
 
-const keyboardEVent = new KeyboardEvent(player);
+const keyboardEVent = new KeyboardEvent(playerEntity);
 
 scene.entities = [
-  player,
-  // new Box("Box 1", { x: 100, y: 0 }, 5),
-  new Box("Box 2", { x: 220, y: 100 }, 1),
-  new Box("Box 3", { x: 300, y: scene.canvas.height - 70 }, 0, false),
+  // new Enemy("enemy 1", { x: 550, y: 400 }, getRaider1Spritesheet()),
+  playerEntity,
+  new Box(
+    "Box 1",
+    { x: 220, y: 100 },
+    1,
+    {
+      w: 100,
+      h: 100,
+    },
+    true
+  ),
+  new Box(
+    "Box 2",
+    { x: 350, y: 100 },
+    1,
+    {
+      w: 100,
+      h: 100,
+    },
+    true
+  ),
 ];
 
 scene.run(() => {
@@ -21,7 +39,7 @@ scene.run(() => {
     entity.update();
   }
 
-  scene.context.clearRect(0, 0, scene.canvas.width, scene.canvas.height);
+  scene.drawBackground();
   for (const entity of scene.entities) {
     entity.draw();
   }

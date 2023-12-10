@@ -225,6 +225,10 @@ class Entity {
 
     const currentScene = GameManager.getInstance().currentScene;
 
+    if (!(this instanceof MovableEntity)) {
+      return;
+    }
+
     if (collidingRight) {
       this.position.x =
         collidingRight.position.x -
